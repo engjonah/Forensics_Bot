@@ -58,7 +58,7 @@ async def on_ready():
 @client.command(aliases=['h'])
 #@commands.has_permissions(administrator=True)
 async def help(ctx):
-  await ctx.send('Hello! This is Forensics Bot, a bot to help you study for the Science Olympiad Forensics Event.\n**This is still in development**\n!q for a fingerprint!')
+  await ctx.send('Hello! This is Forensics Bot, a bot to help you study for the Science Olympiad Forensics Event.\n**This is still in development**\n!q for a fingerprint!\n!c to check answer\n!r to go back to the first finger\n!s to skip the question')
 
 #get question
 @client.command(aliases=['q'])
@@ -66,8 +66,14 @@ async def question(ctx):
   number = 0
   with open("data/fingerprint_counter.txt", "r") as file:
     number = int(file.readline())
-  with open("data/fingerprint_counter.txt", "w") as file:
-    file.write(str(number+1))
+  increment_finger()
+  row = df.loc[number].astype(str).tolist()
+  print(row)  
+  while row[5]=="True":
+    increment_finger()
+    with open("data/fingerprint_counter.txt", "r") as file:
+      number = int(file.readline())
+    row = df.loc[number].astype(str).tolist() 
   person = int(number/10+1)
   finger = number%10
   if finger==0: #fix for me not using 0 based numbering when I named the files
@@ -85,6 +91,15 @@ async def question(ctx):
     elif (finger in range(6, 11)):
       await ctx.send("Right hand")
 
+#function to move on to next finger. used after each display and when a finger is marked as 'skip'
+def increment_finger():
+  number=0
+  with open("data/fingerprint_counter.txt", "r") as file:
+    number = int(file.readline())
+  with open("data/fingerprint_counter.txt", "w") as file:
+    file.write(str(number+1))
+
+#function to go back to finger 1. may be used to complete fingerprint annotations or start fresh.
 @client.command(aliases=['r'])
 async def reset(ctx):    
   with open("data/fingerprint_counter.txt", "w") as file:
@@ -94,7 +109,7 @@ async def reset(ctx):
 #check answer
 @client.command(aliases=['c'])
 async def check(ctx, *x): 
-  answers = ["plain arch", "tented arch", "radial loop, ulnar loop", "plain whorl", "central pocket whorl", "accidental whorl", "double loop whorl"]
+  answers = ["plain arch", "tented arch", "radial loop", "ulnar loop", "plain whorl", "central pocket whorl", "accidental whorl", "double loop whorl"]
   answer = ' '.join(x).lower()
   print(answer)
   if answer in answers: 
@@ -103,13 +118,22 @@ async def check(ctx, *x):
     with open("data/fingerprint_counter.txt", "r") as file:
       number = (int(file.readline())-2)
     row = df.loc[number].astype(str).tolist()
-    print(row)
     if row[4]=="<NA>":
       for x in range(1,4):
         if(row[x]=="<NA>"):
           with open("data/fingerprint_counter.txt", "r") as file: 
             number = int(file.readline())-2 #1 for previous incrament, 1 for 0 based instead of 1 based
           df.at[number, "guess" + str(x)] = answer
+          row = df.loc[number].astype(str).tolist()
+          print(row)
+          if ("<NA>" not in row[1:4]):
+            counter = Counter(row[1:4])
+            commons_list = counter.most_common(1)
+            if len(commons_list) > 1:
+              df.at[number, "skip"] = str(True)
+            else:
+              df.at[number, "answer"] = commons_list[0][0]
+              df.at[number, "skip"] = str(False)
           row = df.loc[number].astype(str).tolist()
           print(row)
           df.to_csv("data/data.csv", index=False, header=True)
@@ -119,12 +143,23 @@ async def check(ctx, *x):
       if answer==row[4]:
         await ctx.send('Correct!')
       else:
-        await ctx.send('Incorrect. The correct answer is ' + answer)
+        row = df.loc[number].astype(str).tolist()
+
+        await ctx.send('Incorrect. The correct answer is ' + row[4])
   else:
-    await ctx.send('Please reply with a correct fingerprint type.')
-    
+    await ctx.send('Please reply with a correct fingerprint type.\nThe proper types are: ' + ", ".join(answers))
+  df.to_csv("data/data.csv", index=False, header=True)
 
-
+#command to mark fingerprint to skip    
+@client.command(aliases=['s'])
+async def skip(ctx):
+  number=0
+  with open("data/fingerprint_counter.txt", "r") as file:
+    number = (int(file.readline())-2)
+  df.at[number, "skip"] = str(True)
+  df.to_csv("data/data.csv", index=False, header=True)
+  await ctx.send('Marked finger as skip.')
+  
 
 #bypass for replit time limit - make a pingable webpage
 keep_alive.keep_alive()
